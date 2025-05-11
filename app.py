@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, render_template, abort, make_response
+from flask import Flask, request, jsonify, send_file, render_template, after_this_request
 import yt_dlp
 import os
 import re
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # YouTube regex pattern
 YOUTUBE_URL_REGEX = re.compile(r'(https?://)?(www\.)?(youtube\.com|youtu\.?be)/.+')
 
-# Custom headers to mimic browser requests
+# Custom headers to mimic browser
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -59,8 +59,10 @@ def get_qualities():
                 if f.get('vcodec') != 'none':  # Only video formats
                     qualities.append({
                         'itag': itag,
-                        'quality': f.get('format_note') or f'{f.get("height", "?")}p',
-                        'ext': f.get('ext', 'mp4')
+                        'quality_label': f.get('format_note') or f'{f.get("height", "?")}p',
+                        'ext': f.get('ext', 'mp4'),
+                        'has_audio': f.get('acodec') != 'none',
+                        'has_video': f.get('vcodec') != 'none'
                     })
                     seen.add(itag)
 
@@ -71,7 +73,7 @@ def get_qualities():
 
     except Exception as e:
         logger.error(f"Error in get_qualities: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': 'Failed to fetch video info. Try another video.'}), 500
 
 @app.route('/api/download', methods=['POST'])
 def download_video():
@@ -85,42 +87,44 @@ def download_video():
         if not itag:
             return jsonify({'error': 'Quality (itag) must be selected'}), 400
 
-        # Stream directly to memory without saving to disk
-        buffer = BytesIO()
+        # Generate unique filename
+        filename = f"yt_download_{uuid.uuid4().hex}.mp4"
+        
         ydl_opts = {
             'format': itag,
-            'outtmpl': '-',  # Stream to stdout
+            'outtmpl': filename,
             'quiet': True,
-            'headers': HEADERS,
             'no_warnings': True,
-            'buffer_size': 16384,  # Smaller chunks for Render's memory
+            'headers': HEADERS,
+            'noplaylist': True,
+            'merge_output_format': 'mp4',
         }
+
+        @after_this_request
+        def cleanup(response):
+            try:
+                if os.path.exists(filename):
+                    os.remove(filename)
+            except Exception as e:
+                logger.error(f"Error cleaning up file: {str(e)}")
+            return response
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            if not info:
+                return jsonify({'error': 'Could not extract video info'}), 404
+            
             ydl.download([url])
             
-            # For actual streaming implementation:
-            # You would need to implement proper streaming here
-            # This is a simplified version that works for small videos
-            
-            temp_filename = f'temp_{uuid.uuid4()}.mp4'
-            ydl_opts['outtmpl'] = temp_filename
-            ydl = yt_dlp.YoutubeDL(ydl_opts)
-            ydl.download([url])
-            
-            def cleanup():
-                if os.path.exists(temp_filename):
-                    os.remove(temp_filename)
-            
-            response = send_file(
-                temp_filename,
+            if not os.path.exists(filename):
+                return jsonify({'error': 'Download failed - file not created'}), 500
+
+            return send_file(
+                filename,
                 as_attachment=True,
                 download_name=f'youtube_video_{itag}.mp4',
                 mimetype='video/mp4'
             )
-            response.call_on_close(cleanup)
-            return response
 
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
