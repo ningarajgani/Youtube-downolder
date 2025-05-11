@@ -1,91 +1,125 @@
-// static/script.js
-
 const urlInput = document.getElementById('urlInput');
 const qualitySelect = document.getElementById('qualitySelect');
 const downloadBtn = document.getElementById('downloadBtn');
 const statusDiv = document.getElementById('status');
 
-urlInput.addEventListener('change', async () => {
-  const url = urlInput.value.trim();
-  qualitySelect.innerHTML = '<option value="" disabled selected>Loading qualities...</option>';
-  qualitySelect.disabled = true;
-  downloadBtn.disabled = true;
-  statusDiv.textContent = '';
+// Debounce function to prevent rapid API calls
+function debounce(func, timeout = 500) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { func.apply(this, args); }, timeout);
+    };
+}
 
-  if(!url) {
-    qualitySelect.innerHTML = '<option value="" disabled selected>Select quality</option>';
+const fetchQualities = async (url) => {
+    qualitySelect.innerHTML = '<option value="" disabled selected>Loading qualities...</option>';
     qualitySelect.disabled = true;
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/get_qualities', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url})
-    });
-    const data = await res.json();
-    if(data.error) {
-      statusDiv.textContent = 'Error: ' + data.error;
-      qualitySelect.innerHTML = '<option value="" disabled selected>Select quality</option>';
-      qualitySelect.disabled = true;
-      return;
-    }
-    qualitySelect.innerHTML = '';
-    data.qualities.forEach(q => {
-      const option = document.createElement('option');
-      option.value = q.itag;
-      option.textContent = q.quality_label + ' ' + q.extension + (q.has_audio && q.has_video ? ' (audio+video)' : (q.has_audio ? ' (audio only)' : (q.has_video ? ' (video only)' : '')));
-      qualitySelect.appendChild(option);
-    });
-    qualitySelect.disabled = false;
-    downloadBtn.disabled = false;
+    downloadBtn.disabled = true;
     statusDiv.textContent = '';
-  } catch(err) {
-    qualitySelect.innerHTML = '<option value="" disabled selected>Select quality</option>';
-    qualitySelect.disabled = true;
-    statusDiv.textContent = 'Error fetching qualities.';
-  }
-});
+    statusDiv.style.color = '#3D52A0';
+
+    try {
+        const res = await fetch('/api/get_qualities', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Failed to fetch qualities');
+        }
+
+        const data = await res.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        qualitySelect.innerHTML = '';
+        data.qualities.forEach(q => {
+            const option = document.createElement('option');
+            option.value = q.itag;
+            let label = `${q.quality_label} (${q.ext})`;
+            if (q.has_audio && q.has_video) label += ' - Audio+Video';
+            else if (q.has_audio) label += ' - Audio Only';
+            else if (q.has_video) label += ' - Video Only';
+            option.textContent = label;
+            qualitySelect.appendChild(option);
+        });
+
+        qualitySelect.disabled = false;
+        downloadBtn.disabled = false;
+        statusDiv.textContent = 'Select quality and click download';
+        
+    } catch(err) {
+        qualitySelect.innerHTML = '<option value="" disabled selected>Select quality</option>';
+        qualitySelect.disabled = true;
+        statusDiv.textContent = err.message;
+        statusDiv.style.color = '#ff6b6b';
+    }
+};
+
+// Use debounced version for input changes
+urlInput.addEventListener('input', debounce(() => {
+    const url = urlInput.value.trim();
+    if (!url) {
+        qualitySelect.innerHTML = '<option value="" disabled selected>Select quality</option>';
+        qualitySelect.disabled = true;
+        downloadBtn.disabled = true;
+        statusDiv.textContent = '';
+        return;
+    }
+    fetchQualities(url);
+}));
 
 downloadBtn.addEventListener('click', async () => {
-  const url = urlInput.value.trim();
-  const itag = qualitySelect.value;
-  if(!url || !itag) {
-    statusDiv.textContent = 'Please enter URL and select quality.';
-    return;
-  }
-  statusDiv.textContent = 'Preparing download...';
-  downloadBtn.disabled = true;
-  try {
-    const res = await fetch('/api/download', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url, itag})
-    });
-    if (!res.ok) {
-      const errJson = await res.json();
-      throw new Error(errJson.error || 'Unknown error');
+    const url = urlInput.value.trim();
+    const itag = qualitySelect.value;
+    
+    if (!url || !itag) {
+        statusDiv.textContent = 'Please enter URL and select quality';
+        statusDiv.style.color = '#ff6b6b';
+        return;
     }
-    const blob = await res.blob();
-    const disposition = res.headers.get('Content-Disposition');
-    let filename = 'youtube_video.mp4';
-    if(disposition) {
-      const match = disposition.match(/filename="(.+)"/);
-      if(match && match.length > 1) filename = match[1];
+
+    statusDiv.textContent = 'Preparing download...';
+    statusDiv.style.color = '#3D52A0';
+    downloadBtn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/download', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, itag})
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Download failed');
+        }
+
+        const blob = await res.blob();
+        const filename = res.headers.get('content-disposition')?.split('filename=')[1] || 'youtube_video.mp4';
+        
+        // Create download link
+        const a = document.createElement('a');
+        const urlObject = URL.createObjectURL(blob);
+        a.href = urlObject;
+        a.download = filename.replace(/"/g, '');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(urlObject);
+        
+        statusDiv.textContent = 'Download started!';
+        statusDiv.style.color = '#4BB543';
+        
+    } catch(err) {
+        statusDiv.textContent = err.message;
+        statusDiv.style.color = '#ff6b6b';
+    } finally {
+        downloadBtn.disabled = false;
     }
-    const a = document.createElement('a');
-    const urlObject = URL.createObjectURL(blob);
-    a.href = urlObject;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(urlObject);
-    statusDiv.textContent = 'Download started!';
-  } catch(err) {
-    statusDiv.textContent = 'Error: ' + err.message;
-  } finally {
-    downloadBtn.disabled = false;
-  }
 });
