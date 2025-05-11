@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube Downloader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Cormorant Garamond', serif;
+      background-color: #EDE8F5;
+      color: #3D52A0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background-color: #FFFFFF;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
+    }
+    h1 {
+      color: #3D52A0;
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      font-size: 1.2em;
+      padding: 12px;
+      width: 100%;
+      margin-top: 15px;
+      border-radius: 5px;
+      border: 1px solid #8697C4;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus, button:focus {
+      outline: none;
+      border-color: #7091E6;
+    }
+    button {
+      background-color: #7091E6;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #3D52A0;
+    }
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+      min-height: 1.3em;
+      color: #ADBBDA;
+    }
+    .footer {
+      position: fixed;
+      bottom: 10px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.8em;
+      color: #ADBBDA;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 20px;
+      }
+      input, select, button {
+        font-size: 1em;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>YouTube Video Downloader</h1>
+    <input type="text" id="urlInput" placeholder="Enter YouTube URL" autocomplete="off" />
+    <select id="qualitySelect" disabled>
+      <option value="" disabled selected>Select quality</option>
+    </select>
+    <button id="downloadBtn" disabled>Download</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="footer">
+    <p>&copy; 2025 YouTube Downloader. All rights reserved.</p>
+    <p>Instructions: Enter the YouTube video URL, select your preferred quality, and click "Download" to start.</p>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
